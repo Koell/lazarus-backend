@@ -5,7 +5,7 @@
   "lazarus_url": "http://127.0.0.1:8701",
   "telegram_api_url": "https://api.telegram.org",
   "telegram_token_file": "secrets/telegram.token",
-  "poll_timeout": 50,
+  "poll_timeout": 25,
   "typing_max_seconds": 600,
   "outbox_db": "data/outbox.db",
   "inbound_db": "data/inbound.db",

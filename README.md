@@ -13,7 +13,7 @@ Commands: `/rollback [sha] [memory]`, `/restart`, `/stop`, `/log`, `/status`, `/
 
 `lazarus_backend/` (Python 3.8+, standard library only):
 
-- `telegram_client.py` — TelegramClient: long polling (messages and button presses), sending (split at Telegram's 4096-character limit, at line breaks where possible), inline buttons, editing a message, answering a button press, the typing indicator.
+- `telegram_client.py` — TelegramClient: long polling (messages and button presses), sending (split at Telegram's 4096-character limit, at line breaks where possible), inline buttons, editing a message, answering a button press, the typing indicator. Telegram's IPv4 addresses are tried before its IPv6 ones, each gets 5 s to accept a connection before the next is tried, a long poll waits 25 s (`poll_timeout`) and counts as stalled 5 s later, and calls slower than expected are logged as "slow Telegram call".
 - `update_router.py` — UpdateRouter: pure, maps one Telegram update to one action (ignore, reply, backend command, rollback button press, forward text to Lazarus). Button presses count only from the owner and only with the data of a rollback button. The chat is text only: voice, audio, stickers, photos, files and every other non-text message from the owner are ignored without a reply (logged at info level).
 - `commands.py` — the `/help` text and the replies of the backend's own commands.
 - `status_probe.py` — StatusProbe for `/status`: uptime, RAM, temperature, battery from `/proc` and `/sys/class`, and whether lazarus-ai answers `health`; the running commit and the last push; whether Lazarus speaks aloud (muted, quiet hours, no text-to-speech tool); anything unreadable shows `?`.

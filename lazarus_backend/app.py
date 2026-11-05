@@ -48,6 +48,17 @@ SNAPSHOT_FAILED = "The nightly snapshot of Lazarus failed, nothing was committed
 
 log = logging.getLogger("lazarus_backend")
 
+# An update handled this many seconds after the owner sent it is logged (Telegram's `date` is in whole
+# seconds, and the phone's clock may be a little off).
+LATE_UPDATE_SECONDS = 5
+
+
+def _log_if_late(update, now):
+    # Only messages: a button press carries the date of the message the button sits under.
+    sent = (update.get("message") or {}).get("date")
+    if isinstance(sent, (int, float)) and now - sent > LATE_UPDATE_SECONDS:
+        log.warning("update %s arrived %.0f s after it was sent", update.get("update_id"), now - sent)
+
 
 def _refused_by_telegram(error):
     """For the Outbox: True if Telegram refused the item itself, so retrying it can't help."""
@@ -160,6 +171,7 @@ class Backend:
                     self.snapshots.retry_now()  # snapshot commits waiting for a push
             for update in updates:
                 offset = update["update_id"] + 1
+                _log_if_late(update, time.time())
                 try:
                     self.handle_update(update)
                 except Exception:

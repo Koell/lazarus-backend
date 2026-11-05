@@ -44,8 +44,9 @@ class Config:
     lazarus_url: str = "http://127.0.0.1:8701"
     telegram_api_url: str = "https://api.telegram.org"
     telegram_token_file: str = "secrets/telegram.token"
-    # Long-polling wait in seconds that Telegram holds a getUpdates request open.
-    poll_timeout: int = 50
+    # Long-polling wait in seconds that Telegram holds a getUpdates request open. Kept short, so a poll
+    # whose connection went silent is given up and replaced after this plus a few seconds.
+    poll_timeout: int = 25
     # The typing indicator stops after this many seconds even without a reply.
     typing_max_seconds: int = 600
     # SQLite file of the outgoing queue (git-ignored); ":memory:" keeps it in memory only.

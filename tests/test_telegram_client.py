@@ -1,7 +1,10 @@
+import socket
+import time
 import unittest
+from unittest import mock
 
-from lazarus_backend.telegram_client import (EMPTY_TEXT, MESSAGE_LIMIT, TelegramClient, TelegramError,
-                                             split_text)
+from lazarus_backend.telegram_client import (EMPTY_TEXT, MESSAGE_LIMIT, POLL_SLACK_SECONDS, TelegramClient,
+                                             TelegramError, connect_quickly, quick_urlopen, split_text)
 from tests.fakes import FakeTelegram
 
 
@@ -102,6 +105,69 @@ class TelegramClientTest(unittest.TestCase):
     def test_refusal_raises_telegram_error_with_the_description(self):
         with self.assertRaisesRegex(TelegramError, "message text is empty"):
             self.client.call("sendMessage", chat_id=42, text="")
+
+
+class ConnectQuicklyTest(unittest.TestCase):
+    """A dead address of api.telegram.org costs `connect_seconds`, not the OS's connect timeout."""
+
+    def setUp(self):
+        self.listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.listener.bind(("127.0.0.1", 0))
+        self.listener.listen(1)
+        self.addCleanup(self.listener.close)
+        self.port = self.listener.getsockname()[1]
+
+    def addresses(self, *hosts):
+        return lambda host, port, family, kind: [(socket.AF_INET, socket.SOCK_STREAM, 0, "", (h, self.port))
+                                                 for h in hosts]
+
+    def test_a_dead_address_is_skipped_quickly_and_the_next_one_used(self):
+        # 10.255.255.1 is not routed: the connect hangs (or fails at once, depending on the network).
+        started = time.monotonic()
+        with self.assertLogs("lazarus_backend.telegram_client", "INFO"):
+            sock = connect_quickly(("api.telegram.org", self.port), timeout=30, connect_seconds=0.5,
+                                   getaddrinfo=self.addresses("10.255.255.1", "127.0.0.1"))
+        self.addCleanup(sock.close)
+        self.assertLess(time.monotonic() - started, 5)
+        self.assertEqual(("127.0.0.1", self.port), sock.getpeername())
+        self.assertEqual(30, sock.gettimeout(), "the read timeout applies once connected")
+
+    def test_ipv4_is_tried_before_ipv6(self):
+        tried = []
+
+        def addresses(host, port, family, kind):
+            # Name resolution lists IPv6 first; nothing is tried yet, only the order is recorded.
+            return [(socket.AF_INET6, socket.SOCK_STREAM, 0, "", ("::1", self.port, 0, 0)),
+                    (socket.AF_INET, socket.SOCK_STREAM, 0, "", ("127.0.0.1", self.port))]
+
+        real_socket = socket.socket
+
+        def recording_socket(family, *args):
+            tried.append(family)
+            return real_socket(family, *args)
+
+        with mock.patch("lazarus_backend.telegram_client.socket.socket", recording_socket):
+            sock = connect_quickly(("api.telegram.org", self.port), timeout=30, connect_seconds=0.5,
+                                   getaddrinfo=addresses)
+        self.addCleanup(sock.close)
+        self.assertEqual([socket.AF_INET], tried, "IPv4 connected first, IPv6 was never needed")
+
+    def test_all_addresses_failing_raises_the_last_error(self):
+        self.listener.close()  # nothing listens on the port any more: connection refused
+        with self.assertLogs("lazarus_backend.telegram_client", "INFO"), self.assertRaises(OSError):
+            connect_quickly(("api.telegram.org", self.port), timeout=30, connect_seconds=0.5,
+                            getaddrinfo=self.addresses("127.0.0.1"))
+
+    def test_the_client_connects_through_it_by_default(self):
+        self.assertIs(quick_urlopen, TelegramClient("token")._urlopen)
+
+    def test_a_long_poll_counts_as_stalled_a_few_seconds_after_its_timeout(self):
+        calls = []
+        client = TelegramClient("token")
+        client.call = lambda method, http_timeout=30, **params: calls.append((method, http_timeout)) or []
+        client.get_updates(timeout=25)
+        self.assertEqual([("getUpdates", 25 + POLL_SLACK_SECONDS)], calls)
+        self.assertLessEqual(POLL_SLACK_SECONDS, 10)
 
 
 if __name__ == "__main__":
