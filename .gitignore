@@ -218,3 +218,17 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+.idea
+
+# lazarus-backend: local config, secrets and state. This repo is public: never commit any of them.
+/config.json
+/secrets/
+*.token
+/data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+/logs/
+*.log
